@@ -1,0 +1,26 @@
+# --- Python Virtual Environment ---
+.venv/
+venv/
+ENV/
+env/
+
+# --- Local Configurations & Credentials (CRITICAL) ---
+config.env
+.env
+*.env
+
+# --- Local Vector Database Storage ---
+chroma_db/
+.chroma/
+
+# --- Python Cache Files ---
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+*.suo
+*.user
