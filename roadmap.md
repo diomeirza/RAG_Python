@@ -14,3 +14,10 @@ To build a Retrieval-Augmented Generation (RAG) application that reads your loca
 Step 1: Install the RequirementsOpen your VS Code terminal and install ChromaDB. This database runs entirely inside your Python memory/local folder with no server setup required.
 python -m pip install google-genai python-dotenv chromadb
 
+
+offline embedding and chunking
+Suggested Tool: Hugging Face sentence-transformers
+The sentence-transformers library allows you to run all-MiniLM-L6-v2 directly in your Python code. It is completely free, open-source, and turns text chunks into mathematical vectors completely offline.
+Step 1: Install the Local Embedding LibrariesOpen your terminal and install the required libraries to replace Google's cloud embedding layer:
+bash
+python -m pip install sentence-transformers
