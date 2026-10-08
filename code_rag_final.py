@@ -11,11 +11,10 @@ from sentence_transformers import SentenceTransformer
 load_dotenv(".env")
 client = genai.Client()
 
-# List out all target project directories for unified indexing
+# Focus strictly on your C# source projects
 SOURCE_DIRECTORIES = [
     r"C:\BRI\Repos\brisurf\brisurf_api_controller",
-    r"C:\BRI\Repos\brisurf\brisurf_api_model",      
-    r"C:\BRI\Repos\brisurf\database_schema"         
+    r"C:\BRI\Repos\brisurf\brisurf_api_model"
 ]
 DB_STORAGE_PATH = "./chroma_db"
 
@@ -27,8 +26,8 @@ collection = chroma_client.get_or_create_collection(name="brisurf_api_codebase")
 print("📥 Loading local embedding model (all-MiniLM-L6-v2)...")
 local_embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# 2. Unified, Delta-Tracking Multi-Directory Ingestion Block
-print("⚡ Scanning source directories for updates and changes...")
+# 2. Unified C# Code Ingestion Block
+print("⚡ Scanning C# directories for updates and changes...")
 
 all_source_files = []
 
@@ -37,13 +36,9 @@ for directory in SOURCE_DIRECTORIES:
         print(f"⚠️ Warning: Configuration path not found, skipping: {directory}")
         continue
         
-    # Gather C# files
+    # Gather C# files (.cs) recursively
     cs_pattern = os.path.join(directory, "**", "*.cs")
     all_source_files.extend(glob.glob(cs_pattern, recursive=True))
-    
-    # Gather SQL files
-    sql_pattern = os.path.join(directory, "**", "*.sql")
-    all_source_files.extend(glob.glob(sql_pattern, recursive=True))
 
 total_files = len(all_source_files)
 
@@ -52,7 +47,6 @@ total_chunks_in_db = collection.count()
 db_file_tracker = {}
 
 if total_chunks_in_db > 0:
-    # Lift the 100-row limit barrier to scan every single tracked file fragment
     existing_meta = collection.get(include=["metadatas"], limit=total_chunks_in_db)
     
     if existing_meta and "metadatas" in existing_meta and existing_meta["metadatas"]:
@@ -61,11 +55,8 @@ if total_chunks_in_db > 0:
         
         for meta in inner_list:
             if meta and "file_path" in meta:
-                # FIX 1: Enforce clean cross-platform forward slashes for DB strings
                 path = meta["file_path"].replace("\\", "/")
-                # FIX 2: Enforce strong integer data casting to kill float precision bugs
                 mtime = int(meta.get("mtime", 0))
-                # Keep the absolute highest timestamp found across matching chunks
                 if path not in db_file_tracker or mtime > db_file_tracker[path]:
                     db_file_tracker[path] = mtime
 
@@ -74,10 +65,8 @@ modified_files_count = 0
 new_files_count = 0
 
 for file_path in all_source_files:
-    # FIX 3: Enforce identical cross-platform forward slashes on active files
     clean_path = file_path.replace("\\", "/")
     try:
-        # FIX 4: Convert live disk timestamps to absolute integers
         current_mtime = int(os.path.getmtime(clean_path))
     except Exception:
         continue  
@@ -93,7 +82,6 @@ if files_to_process:
     print(f"📋 Scan results: Found {new_files_count} new files and {modified_files_count} modified files out of {total_files} total components.")
     print("Starting streaming local ingestion...\n")
     
-    # Generate unique absolute IDs to prevent ID overlap collapses when chunks are deleted
     id_counter = int(time.time() * 1000)
     CHUNK_SIZE = 1500     
     CHUNK_OVERLAP = 200   
@@ -101,18 +89,13 @@ if files_to_process:
     for idx, (file_path, file_mtime, status) in enumerate(files_to_process):
         filename = os.path.basename(file_path).lower()
         
-        if filename.endswith('table.sql'):
-            file_type = "SQL Table"
-        elif filename.endswith('storeprocedure.sql'):
-            file_type = "SQL SP"
-        elif "brisurf_api_model" in file_path.lower() or "model" in file_path.lower():
+        if "brisurf_api_model" in file_path.lower() or "model" in file_path.lower():
             file_type = "Model C#"
         else:
             file_type = "Controller C#"
             
         print(f"⚙️ [{idx + 1}/{len(files_to_process)}] [{status}] Indexing {file_type}: {os.path.basename(file_path)}...", end="", flush=True)
         
-        # Safe delta cleanup using clean forward slash lookup standards
         if status == "Modified":
             collection.delete(where={"file_path": file_path})
             
@@ -125,35 +108,26 @@ if files_to_process:
                 continue
             
             file_chunks = []
+            start = 0
+            while start < len(code_content):
+                end = start + CHUNK_SIZE
+                file_chunks.append(code_content[start:end])
+                start += (CHUNK_SIZE - CHUNK_OVERLAP)
             
-            # Keep table script fields fully intact
-            if file_type == "SQL Table":
-                file_chunks.append(code_content)
-            else:
-                # Sliding context slice mechanism
-                start = 0
-                while start < len(code_content):
-                    end = start + CHUNK_SIZE
-                    file_chunks.append(code_content[start:end])
-                    start += (CHUNK_SIZE - CHUNK_OVERLAP)
-            
-            # Vectorize items locally completely free
             if file_chunks:
                 chunk_vectors = local_embed_model.encode(file_chunks).tolist()
                 
                 for chunk_idx, (code_chunk, vector) in enumerate(zip(file_chunks, chunk_vectors)):
-                    ext_tag = "sql" if file_path.endswith('.sql') else "cs"
-                    
                     collection.add(
                         ids=[f"chunk_{id_counter}"],
                         embeddings=[vector],
                         documents=[code_chunk],
                         metadatas={
-                            "file_path": file_path, # Clean forward slashes
+                            "file_path": file_path, 
                             "filename": os.path.basename(file_path),
                             "chunk_index": chunk_idx,
-                            "file_ext": ext_tag,
-                            "mtime": file_mtime  
+                            "file_ext": "cs",
+                            "mtime": file_mtime 
                         }
                     )
                     id_counter += 1
@@ -171,16 +145,15 @@ else:
 
 # 3. Interactive Code Explorer Chat Loop with Memory
 print("\n" + "="*50)
-print("🤖 Enterprise C# & SQL Explorer Active (With Memory)")
+print("🤖 Enterprise C# Workspace Explorer Active (With Memory)")
 print("Type 'exit' or 'quit' to close the assistant.")
 print("="*50)
 
 system_instruction = """
-You are an expert enterprise .NET backend architect and database administrator. 
-Analyze the provided local C# code and SQL context snippets to explain multi-layer request flows, 
-pinpoint controller-to-model validation mismatches, trace Stored Procedure implementations, 
-and accurately describe table structures (columns, constraints, keys). Rely ONLY on the provided snippets. 
-Remember prior questions. If the user asks about a table structure, pull it directly from the SQL context snippets.
+You are an expert enterprise .NET backend architect. 
+Analyze the provided local C# code snippets to explain request flows, pinpoint controller-to-model validation 
+mismatches, trace data transformation bindings, and accurately break down business logic rules. 
+Rely ONLY on the provided snippets. Remember prior questions.
 """
 
 chat_session = client.chats.create(
@@ -200,10 +173,8 @@ while True:
     print("Thinking...")
     
     try:
-        # Generate match vectors instantly offline
         query_vector = local_embed_model.encode(user_query).tolist()
         
-        # Retrieve top 5 cross-project matches
         search_results = collection.query(
             query_embeddings=[query_vector],
             n_results=5
